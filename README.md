@@ -14,7 +14,7 @@ BullXEye is a comprehensive digital solution designed to bridge the gap between 
 - **Member Management**: Coaches can view and manage their roster; Archers can leave academies if needed.
 
 ### 📍 Smart Attendance System
-- **QR Code Check-in**: Fast and secure check-in/out using QR codes.
+- **Secure Code Check-in**: Coaches generate a unique 4-digit code that archers enter to mark themselves present.
 - **Geolocation Verification**: Ensures athletes are physically present at the academy location during check-in.
 - **Session Tracking**: Automatic calculation of session duration and history logging.
 
