@@ -16,6 +16,7 @@ interface Shot {
     x: number;
     y: number;
     value: number | string;
+    arrowNumber?: number;
 }
 
 const DISTANCES = [10, 18, 20, 30, 40, 50, 60, 70, 90];
@@ -93,7 +94,7 @@ export default function CompetitionPage() {
     };
 
     const handleFinishSession = async () => {
-        if (!user) {
+        if (!user || !supabase) {
             alert('You must be logged in to save sessions.');
             return;
         }
@@ -284,7 +285,7 @@ export default function CompetitionPage() {
                 </div>
 
                 <ScoreControl
-                    scores={currentShots.map(s => s.value)}
+                    shots={currentShots}
                     arrowsPerEnd={arrowsPerEnd}
                     onClearLast={handleClearLast}
                     onSubmit={handleSubmitEnd}

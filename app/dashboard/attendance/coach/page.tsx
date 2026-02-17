@@ -105,7 +105,14 @@ export default function CoachAttendancePage() {
             .eq('session_id', sessionId)
             .order('created_at', { ascending: false });
 
-        if (data) setAttendees(data);
+        if (data) {
+            // Transform data to match AttendanceRecord interface
+            const formattedData = data.map((record: any) => ({
+                ...record,
+                student: Array.isArray(record.student) ? record.student[0] : record.student
+            }));
+            setAttendees(formattedData);
+        }
         // setIsLoading(false); 
     };
 
@@ -119,7 +126,13 @@ export default function CoachAttendancePage() {
             `)
             .eq('academy_id', academy.id);
 
-        if (data) setAllMembers(data);
+        if (data) {
+            const formattedMembers = data.map((member: any) => ({
+                ...member,
+                user: Array.isArray(member.user) ? member.user[0] : member.user
+            }));
+            setAllMembers(formattedMembers);
+        }
     };
 
     // --- Actions --- 
@@ -209,7 +222,12 @@ export default function CoachAttendancePage() {
                 alert(`Error: ${error.message}`);
             }
         } else if (data) {
-            setAttendees(prev => [data, ...prev]);
+            const formattedRecord = {
+                ...data,
+                student: Array.isArray(data.student) ? data.student[0] : data.student
+            };
+            // @ts-ignore
+            setAttendees(prev => [formattedRecord, ...prev]);
             setIsAddingStudent(false);
         }
     };
@@ -327,8 +345,8 @@ export default function CoachAttendancePage() {
                                             disabled={isPresent}
                                             onClick={() => addStudent(member.user.id)}
                                             className={`w-full flex items-center justify-between p-3 rounded-xl border border-transparent transition-all ${isPresent
-                                                    ? 'bg-green-50 text-green-700 opacity-60'
-                                                    : 'bg-gray-50 hover:bg-gray-100 hover:border-gray-200'
+                                                ? 'bg-green-50 text-green-700 opacity-60'
+                                                : 'bg-gray-50 hover:bg-gray-100 hover:border-gray-200'
                                                 }`}
                                         >
                                             <span className="font-medium">{member.user.full_name}</span>
