@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
@@ -10,7 +10,13 @@ import { useAuth } from '@/context/AuthContext';
 
 export default function SignUp() {
     const router = useRouter();
-    const { signUp } = useAuth();
+    const { signUp, user, isLoading } = useAuth();
+
+    useEffect(() => {
+        if (!isLoading && user) {
+            router.push('/dashboard');
+        }
+    }, [user, isLoading, router]);
     const [formData, setFormData] = useState({
         fullName: '',
         email: '',

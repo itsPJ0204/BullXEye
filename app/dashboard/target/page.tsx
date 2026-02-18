@@ -41,6 +41,17 @@ export default function TargetPage() {
         if (savedState) {
             try {
                 const parsed = JSON.parse(savedState);
+
+                // Check if state is stale (older than 30 minutes)
+                const now = Date.now();
+                const staleThreshold = 30 * 60 * 1000; // 30 minutes
+
+                if (parsed.timestamp && (now - parsed.timestamp > staleThreshold)) {
+                    // State is stale, clear it and remain in setup
+                    localStorage.removeItem('bullseye_scoring_state');
+                    return;
+                }
+
                 // Only restore if we are not already in a session (or maybe always restore?)
                 // Let's restore if step is 'setup' (default) to resume
                 if (parsed.step === 'scoring') {
@@ -52,6 +63,7 @@ export default function TargetPage() {
                 }
             } catch (e) {
                 console.error('Failed to parse (or stale) scoring state', e);
+                localStorage.removeItem('bullseye_scoring_state');
             }
         }
     }, []);
@@ -63,7 +75,8 @@ export default function TargetPage() {
                 distance,
                 arrowsPerEnd,
                 ends,
-                currentEndIndex
+                currentEndIndex,
+                timestamp: Date.now()
             };
             localStorage.setItem('bullseye_scoring_state', JSON.stringify(stateToSave));
         }

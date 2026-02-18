@@ -12,6 +12,8 @@ export default function Dashboard() {
     const router = useRouter();
     const [recentSessions, setRecentSessions] = useState<any[]>([]);
     const [showAcademyMenu, setShowAcademyMenu] = useState(false);
+    const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Helper to get initials if name exists
     const getFirstName = (name: string) => name.split(' ')[0];
@@ -36,6 +38,41 @@ export default function Dashboard() {
 
         fetchSessions();
     }, []);
+
+    const toggleSessionSelection = (sessionId: string) => {
+        const newSelected = new Set(selectedSessions);
+        if (newSelected.has(sessionId)) {
+            newSelected.delete(sessionId);
+        } else {
+            newSelected.add(sessionId);
+        }
+        setSelectedSessions(newSelected);
+    };
+
+    const handleDeleteSelected = async () => {
+        if (!supabase) return;
+        if (selectedSessions.size === 0) return;
+
+        if (!confirm(`Are you sure you want to delete ${selectedSessions.size} selected session(s)?`)) return;
+
+        setIsDeleting(true);
+        try {
+            const { error } = await supabase
+                .from('practice_sessions')
+                .delete()
+                .in('id', Array.from(selectedSessions));
+
+            if (error) throw error;
+
+            setRecentSessions(prev => prev.filter(s => !selectedSessions.has(s.id)));
+            setSelectedSessions(new Set());
+        } catch (error: any) {
+            console.error('Error deleting sessions:', error);
+            alert('Failed to delete sessions: ' + error.message);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     return (
         <div className="p-6 space-y-6">
@@ -227,50 +264,64 @@ export default function Dashboard() {
             }
 
             <div>
-                <h3 className="font-bold text-lg mb-4">Recent Activity</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-lg">Recent Activity</h3>
+                    {selectedSessions.size > 0 && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleDeleteSelected}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            disabled={isDeleting}
+                        >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete ({selectedSessions.size})
+                        </Button>
+                    )}
+                </div>
                 <div className="space-y-3">
                     {recentSessions.length === 0 ? (
                         <p className="text-gray-500 text-sm">No recent activity.</p>
                     ) : (
                         recentSessions.map((session) => (
-                            <div key={session.id} className="flex items-center p-4 bg-white rounded-xl shadow-sm border border-gray-100 group relative">
-                                <div className="w-12 h-12 bg-orange-100 rounded-lg mr-4 flex flex-col items-center justify-center text-orange-600 font-bold">
-                                    <span className="text-sm">Avg</span>
-                                    <span className="text-lg leading-none">{(session.total_score / session.total_arrows).toFixed(1)}</span>
+                            <div key={session.id} className={`flex items-center p-4 bg-white rounded-xl shadow-sm border border-gray-100 group relative transition-colors ${selectedSessions.has(session.id) ? 'bg-blue-50 border-blue-200' : ''}`}>
+                                <div className="absolute left-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedSessions.has(session.id)}
+                                        onChange={() => toggleSessionSelection(session.id)}
+                                        className="w-5 h-5 rounded border-gray-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer"
+                                    />
                                 </div>
-                                <div>
-                                    <h4 className="font-medium text-[var(--color-dark)]">{session.total_arrows} Arrows</h4>
-                                    <p className="text-xs text-gray-400">
-                                        {new Date(session.created_at).toLocaleDateString()} • {new Date(session.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-                                </div>
-                                <div className="ml-auto text-right mr-8">
-                                    <div className="font-bold text-gray-700 text-lg">
-                                        {session.total_score}
+                                <div
+                                    className={`relative z-0 flex items-center w-full ${selectedSessions.has(session.id) || 'group-hover:pl-6'} transition-all duration-200`}
+                                >
+                                    <div className="w-12 h-12 bg-orange-100 rounded-lg mr-4 flex flex-col items-center justify-center text-orange-600 font-bold flex-shrink-0">
+                                        <span className="text-sm">Avg</span>
+                                        <span className="text-lg leading-none">{(session.total_score / session.total_arrows).toFixed(1)}</span>
                                     </div>
-                                    <div className="text-xs text-gray-400 font-medium">
-                                        {session.distance}m
+                                    <div className="flex-grow min-w-0">
+                                        <h4 className="font-medium text-[var(--color-dark)] truncate">{session.total_arrows} Arrows</h4>
+                                        <p className="text-xs text-gray-400 truncate">
+                                            {new Date(session.created_at).toLocaleDateString()} • {new Date(session.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    </div>
+                                    <div className="ml-auto text-right pl-2 flex-shrink-0">
+                                        <div className="font-bold text-gray-700 text-lg">
+                                            {session.total_score}
+                                        </div>
+                                        <div className="text-xs text-gray-400 font-medium">
+                                            {session.distance}m
+                                        </div>
                                     </div>
                                 </div>
 
-                                <button
-                                    onClick={async () => {
-                                        if (!supabase) return;
-                                        if (confirm('Are you sure you want to delete this session?')) {
-                                            const { error } = await supabase.from('practice_sessions').delete().eq('id', session.id);
-                                            if (!error) {
-                                                setRecentSessions(prev => prev.filter(s => s.id !== session.id));
-                                            } else {
-                                                alert('Failed to delete session');
-                                                console.error(error);
-                                            }
-                                        }
-                                    }}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                                    title="Delete Session"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
+                                {/* Selection Overlay for Mobile - Make the whole card clickable for selection if logical, or keeps specific checkbox behavior */}
+                                {/* Keeping specific checkbox behavior for precision, but ensuring touch targets are good */}
+                                <div
+                                    className="absolute inset-0 cursor-pointer z-0"
+                                    onClick={() => toggleSessionSelection(session.id)}
+                                />
                             </div>
                         ))
                     )}
