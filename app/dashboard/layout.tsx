@@ -33,6 +33,17 @@ export default function DashboardLayout({
                 <div className="text-xs text-gray-400 mt-2">
                     {isLoading ? 'Auth Loading...' : !user ? 'No User' : !role ? 'No Role' : 'Redirecting...'}
                 </div>
+                {/* Failsafe Logout */}
+                <button
+                    onClick={() => {
+                        window.location.href = '/login';
+                        // Force hard reload to clear state
+                        // supabase.auth.signOut(); // Can't easily access auth here without context, but simple redirect helps break loop.
+                    }}
+                    className="mt-8 text-xs text-red-400 hover:text-red-600 underline cursor-pointer"
+                >
+                    Stuck? Click here to return to login.
+                </button>
             </div>
         );
     }
