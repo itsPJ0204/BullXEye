@@ -310,7 +310,10 @@ export default function Dashboard() {
                                 </div>
 
                                 {/* 3-dots Menu */}
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 z-20">
+                                <div
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 z-20"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
