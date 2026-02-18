@@ -35,6 +35,7 @@ interface Shot {
     y: number;
     value: number | string;
     arrowNumber?: number;
+    color?: string;
 }
 
 interface TargetFaceProps {
@@ -150,7 +151,7 @@ export default function TargetFace({ shots, onShot, readOnly = false }: TargetFa
                 <line x1="50" y1="49" x2="50" y2="51" stroke="black" strokeWidth="0.1" opacity="0.5" />
 
                 {shots.map((shot, i) => (
-                    <circle key={i} cx={shot.x} cy={shot.y} r="1.5" fill="#00FF00" stroke="black" strokeWidth="0.5" />
+                    <circle key={i} cx={shot.x} cy={shot.y} r="1.5" fill={shot.color || "#00FF00"} stroke="black" strokeWidth="0.5" />
                 ))}
             </svg>
 
@@ -180,7 +181,7 @@ export default function TargetFace({ shots, onShot, readOnly = false }: TargetFa
                             <line x1="50" y1="49" x2="50" y2="51" stroke="black" strokeWidth="0.1" opacity="0.5" />
 
                             {shots.map((shot, i) => (
-                                <circle key={i} cx={shot.x} cy={shot.y} r="1.5" fill="#00FF00" stroke="black" strokeWidth="0.5" />
+                                <circle key={i} cx={shot.x} cy={shot.y} r="1.5" fill={shot.color || "#00FF00"} stroke="black" strokeWidth="0.5" />
                             ))}
                             <circle cx={point.x} cy={point.y} r={0.2 * (100 / size)} fill="none" stroke="red" strokeWidth="0.5" />
                         </svg>

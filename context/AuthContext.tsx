@@ -120,26 +120,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Check for existing session
         if (supabase) {
-            supabase.auth.getSession().then(({ data: { session } }) => {
+            supabase?.auth.getSession().then(({ data: { session }, error }) => {
+                if (error) {
+                    console.error('Error restoring session:', error);
+                    // If refresh token is invalid, force sign out to clear storage
+                    if (error.message.includes('Refresh Token Not Found') || error.message.includes('Invalid Refresh Token')) {
+                        supabase?.auth.signOut();
+                    }
+                }
+
                 if (mounted) {
+                    console.log('AuthContext: Session restored', { session });
                     setSession(session);
                     setUser(session?.user ?? null);
                     if (session?.user) {
-                        fetchProfileData(session.user.id);
+                        console.log('AuthContext: Fetching profile for', session.user.id);
+                        fetchProfileData(session.user.id).finally(() => {
+                            console.log('AuthContext: Profile fetch done');
+                            if (mounted) setIsLoading(false);
+                        });
                     } else {
+                        console.log('AuthContext: No user in session');
                         setIsLoading(false);
                     }
                 }
             });
 
-            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+                const eventName = event as string; // Cast to string to avoid type error if USER_DELETED is not in types
+                if (eventName === 'SIGNED_OUT' || eventName === 'USER_DELETED') {
+                    // clear state
+                    setUser(null);
+                    setSession(null);
+                    setRole(null);
+                    setAcademy(null);
+                    setJoinedAcademies([]);
+                    setIsLoading(false);
+                    return;
+                }
+
                 if (mounted) {
                     setSession(session);
                     setUser(session?.user ?? null);
                     if (session?.user) {
                         // Clear old state before fetching new to avoid flashes if switching users (rare)
-                        fetchProfileData(session.user.id).then(() => setIsLoading(false));
+                        await fetchProfileData(session.user.id);
+                        setIsLoading(false);
                     } else {
+                        // Should be handled by SIGNED_OUT but just in case
                         setRole(null);
                         setAcademy(null);
                         setJoinedAcademies([]);
@@ -155,6 +183,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
             setIsLoading(false);
         }
+
+        // Safety timeout: If auth takes longer than 5 seconds, stop loading
+        const timer = setTimeout(() => {
+            if (mounted) {
+                console.warn('AuthContext: Loading timed out, forcing completion');
+                setIsLoading(false);
+            }
+        }, 5000);
+
+        return () => clearTimeout(timer);
     }, []);
 
     const updateRole = async (newRole: UserRole) => {

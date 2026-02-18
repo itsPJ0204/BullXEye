@@ -8,11 +8,11 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function Dashboard() {
-    const { academy, role, joinedAcademies, switchAcademy, refreshUserData, profile } = useAuth();
+    const { user, academy, role, joinedAcademies, switchAcademy, refreshUserData, profile } = useAuth();
     const router = useRouter();
     const [recentSessions, setRecentSessions] = useState<any[]>([]);
     const [showAcademyMenu, setShowAcademyMenu] = useState(false);
-    const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
+    const [openMenuSessionId, setOpenMenuSessionId] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
     // Helper to get initials if name exists
@@ -23,13 +23,16 @@ export default function Dashboard() {
     useEffect(() => {
         const fetchSessions = async () => {
             if (!supabase) return;
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
 
+            // Use user from context if available which is faster, otherwise fallback
+            const currentUser = user || (await supabase.auth.getUser()).data.user;
+            if (!currentUser) return;
+
+            // Optimize query: only select needed fields
             const { data, error } = await supabase
                 .from('practice_sessions')
-                .select('*')
-                .eq('user_id', user.id)
+                .select('id, created_at, distance, total_score, total_arrows, arrows_per_end')
+                .eq('user_id', currentUser.id)
                 .order('created_at', { ascending: false })
                 .limit(5);
 
@@ -37,40 +40,36 @@ export default function Dashboard() {
         };
 
         fetchSessions();
+    }, [user]);
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = () => setOpenMenuSessionId(null);
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
     }, []);
 
-    const toggleSessionSelection = (sessionId: string) => {
-        const newSelected = new Set(selectedSessions);
-        if (newSelected.has(sessionId)) {
-            newSelected.delete(sessionId);
-        } else {
-            newSelected.add(sessionId);
-        }
-        setSelectedSessions(newSelected);
-    };
-
-    const handleDeleteSelected = async () => {
+    const handleDeleteSession = async (sessionId: string) => {
         if (!supabase) return;
-        if (selectedSessions.size === 0) return;
 
-        if (!confirm(`Are you sure you want to delete ${selectedSessions.size} selected session(s)?`)) return;
+        if (!confirm(`Are you sure you want to delete this session?`)) return;
 
         setIsDeleting(true);
         try {
             const { error } = await supabase
                 .from('practice_sessions')
                 .delete()
-                .in('id', Array.from(selectedSessions));
+                .eq('id', sessionId);
 
             if (error) throw error;
 
-            setRecentSessions(prev => prev.filter(s => !selectedSessions.has(s.id)));
-            setSelectedSessions(new Set());
+            setRecentSessions(prev => prev.filter(s => s.id !== sessionId));
         } catch (error: any) {
-            console.error('Error deleting sessions:', error);
-            alert('Failed to delete sessions: ' + error.message);
+            console.error('Error deleting session:', error);
+            alert('Failed to delete session: ' + error.message);
         } finally {
             setIsDeleting(false);
+            setOpenMenuSessionId(null);
         }
     };
 
@@ -266,47 +265,41 @@ export default function Dashboard() {
             <div>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-lg">Recent Activity</h3>
-                    {selectedSessions.size > 0 && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleDeleteSelected}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            disabled={isDeleting}
-                        >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete ({selectedSessions.size})
-                        </Button>
-                    )}
+                    <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/history')} className="text-gray-400 font-normal">View All</Button>
                 </div>
+
                 <div className="space-y-3">
                     {recentSessions.length === 0 ? (
                         <p className="text-gray-500 text-sm">No recent activity.</p>
                     ) : (
                         recentSessions.map((session) => (
-                            <div key={session.id} className={`flex items-center p-4 bg-white rounded-xl shadow-sm border border-gray-100 group relative transition-colors ${selectedSessions.has(session.id) ? 'bg-blue-50 border-blue-200' : ''}`}>
-                                <div className="absolute left-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedSessions.has(session.id)}
-                                        onChange={() => toggleSessionSelection(session.id)}
-                                        className="w-5 h-5 rounded border-gray-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer"
-                                    />
-                                </div>
+                            <div
+                                key={session.id}
+                                onClick={(e) => {
+                                    // Prevent navigation if clicking menu button or inside menu
+                                    if ((e.target as HTMLElement).closest('button')) {
+                                        return;
+                                    }
+                                    router.push(`/dashboard/session/${session.id}`);
+                                }}
+                                className={`flex items-center p-4 bg-white rounded-xl shadow-sm border border-gray-100 group relative transition-colors cursor-pointer active:scale-[0.99] hover:border-gray-300`}
+                            >
                                 <div
-                                    className={`relative z-0 flex items-center w-full ${selectedSessions.has(session.id) || 'group-hover:pl-6'} transition-all duration-200`}
+                                    className={`relative z-0 flex items-center w-full transition-all duration-200 pr-8`}
                                 >
                                     <div className="w-12 h-12 bg-orange-100 rounded-lg mr-4 flex flex-col items-center justify-center text-orange-600 font-bold flex-shrink-0">
                                         <span className="text-sm">Avg</span>
                                         <span className="text-lg leading-none">{(session.total_score / session.total_arrows).toFixed(1)}</span>
                                     </div>
                                     <div className="flex-grow min-w-0">
-                                        <h4 className="font-medium text-[var(--color-dark)] truncate">{session.total_arrows} Arrows</h4>
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="font-medium text-[var(--color-dark)] truncate">{session.total_arrows} Arrows</h4>
+                                        </div>
                                         <p className="text-xs text-gray-400 truncate">
                                             {new Date(session.created_at).toLocaleDateString()} • {new Date(session.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </p>
                                     </div>
-                                    <div className="ml-auto text-right pl-2 flex-shrink-0">
+                                    <div className="ml-auto text-right pl-2 flex-shrink-0 mr-2">
                                         <div className="font-bold text-gray-700 text-lg">
                                             {session.total_score}
                                         </div>
@@ -316,12 +309,33 @@ export default function Dashboard() {
                                     </div>
                                 </div>
 
-                                {/* Selection Overlay for Mobile - Make the whole card clickable for selection if logical, or keeps specific checkbox behavior */}
-                                {/* Keeping specific checkbox behavior for precision, but ensuring touch targets are good */}
-                                <div
-                                    className="absolute inset-0 cursor-pointer z-0"
-                                    onClick={() => toggleSessionSelection(session.id)}
-                                />
+                                {/* 3-dots Menu */}
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 z-20">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenMenuSessionId(openMenuSessionId === session.id ? null : session.id);
+                                        }}
+                                        className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        <MoreVertical className="w-5 h-5" />
+                                    </button>
+
+                                    {openMenuSessionId === session.id && (
+                                        <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden z-30 animate-in fade-in zoom-in-95 duration-100">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteSession(session.id);
+                                                }}
+                                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                Delete
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         ))
                     )}

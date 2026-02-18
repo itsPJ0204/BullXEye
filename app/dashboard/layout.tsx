@@ -24,7 +24,17 @@ export default function DashboardLayout({
     }, [user, role, isLoading, router]);
 
     if (isLoading || !user || !role) {
-        return <div className="h-screen flex items-center justify-center text-[var(--color-primary)]">Loading...</div>;
+        if (typeof window !== 'undefined') {
+            console.log('DashboardLayout Loading State:', { isLoading, hasUser: !!user, hasRole: !!role });
+        }
+        return (
+            <div className="h-screen flex flex-col items-center justify-center text-[var(--color-primary)]">
+                <div>Loading...</div>
+                <div className="text-xs text-gray-400 mt-2">
+                    {isLoading ? 'Auth Loading...' : !user ? 'No User' : !role ? 'No Role' : 'Redirecting...'}
+                </div>
+            </div>
+        );
     }
 
     return (

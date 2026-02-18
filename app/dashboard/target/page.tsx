@@ -149,7 +149,7 @@ export default function TargetPage() {
         }, 0);
 
         try {
-            const { error } = await supabase.from('practice_sessions').insert([
+            const { data, error } = await supabase.from('practice_sessions').insert([
                 {
                     user_id: user.id,
                     distance,
@@ -158,7 +158,7 @@ export default function TargetPage() {
                     total_arrows: allShots.length,
                     session_data: ends,
                 }
-            ]);
+            ]).select().single();
 
             setIsSaving(false);
 
@@ -166,7 +166,11 @@ export default function TargetPage() {
                 alert('Error saving session: ' + error.message);
             } else {
                 localStorage.removeItem('bullseye_scoring_state');
-                router.push('/dashboard');
+                if (data && data.id) {
+                    router.push(`/dashboard/session/${data.id}`);
+                } else {
+                    router.push('/dashboard');
+                }
             }
         } catch (error: any) {
             console.error('Error saving session:', error);
@@ -281,6 +285,9 @@ export default function TargetPage() {
                 </Button>
                 <div className="flex flex-col items-end">
                     <div className="flex items-center gap-2">
+                        <div className="text-sm font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-3 py-1 rounded-full">
+                            Total: {totalScore}
+                        </div>
                         <div className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                             {distance}m
                         </div>
