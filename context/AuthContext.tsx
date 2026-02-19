@@ -43,113 +43,152 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [academy, setAcademy] = useState<Academy | null>(null);
     const [joinedAcademies, setJoinedAcademies] = useState<Academy[]>([]);
 
-    // Helper to fetch profile and academy data
-    const fetchProfileData = async (userId: string) => {
+    // Ref to track the latest auth request to prevent race conditions
+    const latestAuthRequestId = React.useRef<number>(0);
+
+    // Helper to fetch profile and academy data with strict timeout and error handling
+    // Helper to fetch profile and academy data with strict timeout and error handling
+    const fetchProfileData = async (userId: string, requestId: number) => {
         if (!supabase) return;
-        try {
-            // 1. Fetch Profile
-            const { data: profileData, error: profileError } = await supabase
+        const client = supabase; // Capture for TS safety
+
+        console.log(`AuthContext: Fetching profile for ${userId} (Req: ${requestId})`);
+
+        // Timeout promise: ONLY for UI loading state toggle
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('UI_TIMEOUT')), 5000)
+        );
+
+        // Actual Data Fetch logic (runs until completion)
+        const fetchDataPromise = async () => {
+            console.log('AuthContext: Starting DB query for profile...');
+            const { data: profileData, error } = await client
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
-                .single();
+                .maybeSingle();
 
-            if (profileError && profileError.code !== 'PGRST116') {
-                console.error('Error fetching profile:', profileError);
-            }
+            console.log('AuthContext: DB query finished.', { profileData, error });
 
-            if (profileData) {
+            if (error) throw error;
+
+            // If we get data, update state immediately (even if late!)
+            if (requestId === latestAuthRequestId.current && profileData) {
                 setProfile(profileData);
                 setRole(profileData.role as UserRole);
+                console.log('AuthContext: Profile (Role) loaded.');
 
+                // If we were still loading (or if we timed out and stopped loading), 
+                // this update will fix the UI.
+                setIsLoading(false);
 
-                // 2. Fetch Joined Academies
-                const { data: membersData, error: membersError } = await supabase
-                    .from('academy_members')
-                    .select(`
-                        academy_id,
-                        academies (
-                            id,
-                            name,
-                            location,
-                            code,
-                            coach_id
-                        )
-                    `)
-                    .eq('user_id', userId);
+                // Now fetch Academies (Background)
+                try {
+                    const { data: membersData } = await client
+                        .from('academy_members')
+                        .select(`
+                            academy_id,
+                            academies (id, name, location, code, coach_id)
+                        `)
+                        .eq('user_id', userId);
 
-                if (membersError) {
-                    console.error('Error fetching academy memberships:', membersError);
-                }
+                    if (requestId !== latestAuthRequestId.current) return;
 
-                const academiesList: Academy[] = [];
-                if (membersData) {
-                    membersData.forEach((item: any) => {
-                        if (item.academies) {
-                            academiesList.push(item.academies as Academy);
-                        }
-                    });
-                }
-                setJoinedAcademies(academiesList);
-
-                // 3. Determine Current Academy (Default to profile.academy_id or first in list)
-                let selectedAcademy: Academy | null = null;
-
-                if (profileData.academy_id) {
-                    // Only select if the user is actually a member (exists in the fetched list)
-                    const found = academiesList.find(a => a.id === profileData.academy_id);
-                    if (found) {
-                        selectedAcademy = found;
+                    let academiesList: Academy[] = [];
+                    let selectedAcademy: Academy | null = null;
+                    if (membersData) {
+                        membersData.forEach((item: any) => {
+                            if (item.academies) academiesList.push(item.academies as Academy);
+                        });
                     }
+                    setJoinedAcademies(academiesList);
+
+                    if (profileData.academy_id) {
+                        selectedAcademy = academiesList.find(a => a.id === profileData.academy_id) || null;
+                    }
+                    if (!selectedAcademy && academiesList.length > 0) {
+                        selectedAcademy = academiesList[0];
+                    }
+                    setAcademy(selectedAcademy);
+                    console.log('AuthContext: Academies loaded.');
+
+                } catch (err) {
+                    console.warn('AuthContext: Academies fetch failed', err);
                 }
 
-                // If no valid preference found, or preference invalid, fallback to first available
-                if (!selectedAcademy && academiesList.length > 0) {
-                    selectedAcademy = academiesList[0];
-                }
-
-                setAcademy(selectedAcademy);
+                return profileData;
             }
-        } catch (error) {
-            console.error('Unexpected error fetching profile:', error);
+            return null;
+        };
+
+        try {
+            // Race the LOADING INDICATION, not the data fetch itself
+            // We want data fetch to continue even if UI shows "taking a while"
+            await Promise.race([
+                fetchDataPromise(),
+                timeoutPromise
+            ]);
+
+        } catch (error: any) {
+            if (error.message === 'UI_TIMEOUT') {
+                console.warn('AuthContext: Profile fetch taking long (UI released).');
+                // Allow UI to show "Finalizing setup" or dashboard structure
+                if (requestId === latestAuthRequestId.current) {
+                    setIsLoading(false);
+                }
+            } else {
+                console.error('AuthContext: Profile fetch failed:', error);
+                if (requestId === latestAuthRequestId.current) {
+                    setIsLoading(false);
+                }
+            }
         }
     };
 
     useEffect(() => {
         let mounted = true;
 
-        // Check for existing session
-        if (supabase) {
-            supabase?.auth.getSession().then(({ data: { session }, error }) => {
+        const initAuth = async () => {
+            if (!supabase) return;
+
+            const requestId = ++latestAuthRequestId.current;
+            console.log(`AuthContext: Initializing (Req: ${requestId})`);
+
+            try {
+                // Get Session
+                const { data: { session }, error } = await supabase.auth.getSession();
+
                 if (error) {
-                    console.error('Error restoring session:', error);
-                    // If refresh token is invalid, force sign out to clear storage
-                    if (error.message.includes('Refresh Token Not Found') || error.message.includes('Invalid Refresh Token')) {
-                        supabase?.auth.signOut();
-                    }
+                    console.error('AuthContext: Session error', error);
+                    if (mounted) setIsLoading(false);
+                    return;
                 }
 
                 if (mounted) {
-                    console.log('AuthContext: Session restored', { session });
                     setSession(session);
                     setUser(session?.user ?? null);
+
                     if (session?.user) {
-                        console.log('AuthContext: Fetching profile for', session.user.id);
-                        fetchProfileData(session.user.id).finally(() => {
-                            console.log('AuthContext: Profile fetch done');
-                            if (mounted) setIsLoading(false);
-                        });
+                        await fetchProfileData(session.user.id, requestId);
                     } else {
-                        console.log('AuthContext: No user in session');
                         setIsLoading(false);
                     }
                 }
-            });
+            } catch (err) {
+                console.error('AuthContext: initAuth critical failure', err);
+                if (mounted) setIsLoading(false);
+            }
+        };
+
+        if (supabase) {
+            initAuth();
 
             const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-                const eventName = event as string; // Cast to string to avoid type error if USER_DELETED is not in types
+                const eventName = event as string;
+                console.log(`AuthContext: Auth event ${eventName}`);
+
                 if (eventName === 'SIGNED_OUT' || eventName === 'USER_DELETED') {
-                    // clear state
+                    latestAuthRequestId.current++; // Invalidate pending requests
                     setUser(null);
                     setSession(null);
                     setRole(null);
@@ -159,18 +198,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     return;
                 }
 
-                if (mounted) {
-                    setSession(session);
-                    setUser(session?.user ?? null);
+                if (eventName === 'SIGNED_IN' || eventName === 'TOKEN_REFRESHED' || eventName === 'INITIAL_SESSION') {
+                    const requestId = ++latestAuthRequestId.current;
+
                     if (session?.user) {
-                        // Clear old state before fetching new to avoid flashes if switching users (rare)
-                        await fetchProfileData(session.user.id);
-                        setIsLoading(false);
+                        // Crucial: Set loading true immediately if switching users or signing in
+                        // But be careful not to flash loading on simple token refreshes if we already have data?
+                        // For safety against glitches, let's keep loading=true until data checks out.
+                        setIsLoading(true);
+
+                        setSession(session);
+                        setUser(session.user);
+
+                        await fetchProfileData(session.user.id, requestId);
                     } else {
-                        // Should be handled by SIGNED_OUT but just in case
-                        setRole(null);
-                        setAcademy(null);
-                        setJoinedAcademies([]);
+                        setSession(null);
+                        setUser(null);
                         setIsLoading(false);
                     }
                 }
@@ -183,16 +226,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
             setIsLoading(false);
         }
-
-        // Safety timeout: If auth takes longer than 5 seconds, stop loading
-        const timer = setTimeout(() => {
-            if (mounted) {
-                console.warn('AuthContext: Loading timed out, forcing completion');
-                setIsLoading(false);
-            }
-        }, 5000);
-
-        return () => clearTimeout(timer);
     }, []);
 
     const updateRole = async (newRole: UserRole) => {
@@ -232,9 +265,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!user || !supabase) return null;
 
         try {
-            // 1. Check for duplicates (same coach + same name) is handled by unique constraint or check here
-            // (Simplified for now)
-
             // Generate specific 6-char alphanumeric code
             const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -338,14 +368,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const signIn = async (email: string, password?: string) => {
         if (!supabase) return { error: { message: 'Supabase not initialized' } };
+        console.log('AuthContext: Attempting sign in for', email);
 
-        // For this app we assume password login.
-        // If we want OTP, we can add logic.
-        if (password) {
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
-            return { error };
+        try {
+            if (password) {
+                const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+                if (error) {
+                    console.error('AuthContext: Sign in error', error);
+                    return { error };
+                }
+
+                console.log('AuthContext: Sign in successful', data);
+                // State update handled by onAuthStateChange
+                return { error: null };
+            }
+            return { error: { message: 'Password required' } };
+        } catch (err: any) {
+            console.error('AuthContext: Sign in exception', err);
+            return { error: { message: err.message || 'An unexpected error occurred during sign in.' } };
         }
-        return { error: 'Password required' };
     };
 
     const signUp = async (email: string, password: string, metadata: any) => {
@@ -371,15 +413,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const signOut = async () => {
         if (supabase) await supabase.auth.signOut();
-        setUser(null);
-        setRole(null);
-        setAcademy(null);
-        setJoinedAcademies([]);
+        // State update handled by onAuthStateChange
     };
 
     const refreshUserData = async () => {
         if (user) {
-            await fetchProfileData(user.id);
+            const requestId = ++latestAuthRequestId.current;
+            await fetchProfileData(user.id, requestId);
         }
     };
 

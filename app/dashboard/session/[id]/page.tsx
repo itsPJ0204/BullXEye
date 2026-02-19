@@ -60,23 +60,34 @@ export default function SessionDetails({ params }: { params: Promise<{ id: strin
     useEffect(() => {
         const fetchSession = async () => {
             if (authLoading) return;
-            if (!user) return; // Wait for user to be available
+            if (!user) return;
             if (!supabase) return;
 
-            const { data, error } = await supabase
-                .from('practice_sessions')
-                .select('id, created_at, distance, total_score, total_arrows, arrows_per_end, session_data')
-                .eq('id', id)
-                .single();
+            try {
+                // Timeout promise
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Fetch timeout')), 5000)
+                );
 
-            if (error) {
-                console.error('Error fetching session:', error);
-                // alert('Failed to load session');
-                // router.push('/dashboard');
-            } else {
-                setSession(data as unknown as SessionData);
+                const queryPromise = supabase
+                    .from('practice_sessions')
+                    .select('id, created_at, distance, total_score, total_arrows, arrows_per_end, session_data')
+                    .eq('id', id)
+                    .single();
+
+                const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+
+                if (error) {
+                    console.error('Error fetching session:', error);
+                    // Handle error (optional: redirect or show error UI)
+                } else {
+                    setSession(data as unknown as SessionData);
+                }
+            } catch (err) {
+                console.error('Session Details: Fetch timed out', err);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
 
         fetchSession();
@@ -187,20 +198,27 @@ export default function SessionDetails({ params }: { params: Promise<{ id: strin
                         </Button>
 
                         {showMenu && (
-                            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                                {/* Delete Option */}
                                 <button
-                                    className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors font-medium"
+                                    className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors font-medium cursor-pointer"
                                     onClick={async (e) => {
                                         e.stopPropagation();
                                         setShowMenu(false);
                                         if (!supabase) return;
-                                        if (!confirm('Are you sure you want to delete this session?')) return;
+
+                                        // Confirm delete
+                                        if (!confirm('Are you sure you want to delete this session? This cannot be undone.')) return;
+
                                         setLoading(true);
                                         const { error } = await supabase.from('practice_sessions').delete().eq('id', session.id);
+
                                         if (error) {
+                                            console.error("Error deleting session:", error);
                                             alert('Error deleting: ' + error.message);
                                             setLoading(false);
                                         } else {
+                                            // Success - redirect to dashboard
                                             router.replace('/dashboard');
                                         }
                                     }}

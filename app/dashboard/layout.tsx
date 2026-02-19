@@ -18,32 +18,33 @@ export default function DashboardLayout({
             if (!user) {
                 router.push('/login');
             } else if (!role) {
+                // If user is loaded but no role, it might be a new user OR role fetch failed/lagged.
+                // We should check if we are already on onboarding, if so, don't redirect (already handled by OnboardingLayout?)
+                // Actually, this is DashboardLayout. So if we are here, we are NOT in onboarding.
+                // Redirect to onboarding.
                 router.push('/onboarding');
             }
         }
     }, [user, role, isLoading, router]);
 
-    if (isLoading || !user || !role) {
-        if (typeof window !== 'undefined') {
-            console.log('DashboardLayout Loading State:', { isLoading, hasUser: !!user, hasRole: !!role });
-        }
+    // PREVENT RENDER until checks are done
+    if (isLoading) {
         return (
             <div className="h-screen flex flex-col items-center justify-center text-[var(--color-primary)]">
-                <div>Loading...</div>
-                <div className="text-xs text-gray-400 mt-2">
-                    {isLoading ? 'Auth Loading...' : !user ? 'No User' : !role ? 'No Role' : 'Redirecting...'}
-                </div>
-                {/* Failsafe Logout */}
-                <button
-                    onClick={() => {
-                        window.location.href = '/login';
-                        // Force hard reload to clear state
-                        // supabase.auth.signOut(); // Can't easily access auth here without context, but simple redirect helps break loop.
-                    }}
-                    className="mt-8 text-xs text-red-400 hover:text-red-600 underline cursor-pointer"
-                >
-                    Stuck? Click here to return to login.
-                </button>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current mb-4"></div>
+                <div>Loading App...</div>
+            </div>
+        );
+    }
+
+    if (!user) return null; // Redirecting to login
+
+    // If user exists but role is missing
+    if (!role) {
+        return (
+            <div className="h-screen flex flex-col items-center justify-center text-[var(--color-primary)]">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current mb-4"></div>
+                <div>Finalizing setup...</div>
             </div>
         );
     }
