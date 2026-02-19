@@ -35,7 +35,7 @@ type AcademyMember = {
 };
 
 export default function CoachAttendancePage() {
-    const { user, academy } = useAuth();
+    const { user, academy, isLoading: authLoading } = useAuth();
 
     // --- State --- 
     const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
@@ -56,10 +56,16 @@ export default function CoachAttendancePage() {
     // --- Effects --- 
 
     useEffect(() => {
-        if (user && academy) {
-            loadInitialData();
+        // If auth is done, check requirements
+        if (!authLoading) {
+            if (user && academy) {
+                loadInitialData();
+            } else {
+                // Auth done but no user/academy? Stop local loading so we don't spin forever
+                setIsLoading(false);
+            }
         }
-    }, [user, academy]);
+    }, [user, academy, authLoading]);
 
     const loadInitialData = async () => {
         setIsLoading(true);
@@ -250,6 +256,16 @@ export default function CoachAttendancePage() {
         return (
             <div className="flex justify-center p-8 h-[50vh] items-center">
                 <Loader2 className="w-8 h-8 animate-spin text-[var(--color-primary)]" />
+            </div>
+        );
+    }
+
+    if (!academy) {
+        return (
+            <div className="p-8 text-center space-y-4">
+                <h2 className="text-xl font-bold">No Academy Found</h2>
+                <p className="text-gray-500">You need to create or join an academy to track attendance.</p>
+                <Button onClick={() => window.location.href = '/onboarding/create-academy'}>Create Academy</Button>
             </div>
         );
     }

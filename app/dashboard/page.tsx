@@ -309,47 +309,6 @@ export default function Dashboard() {
                                     </div>
                                 </div>
 
-                                {/* 3-dots Menu */}
-                                <div
-                                    className="absolute right-2 top-1/2 -translate-y-1/2"
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{ zIndex: 50 }}
-                                >
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            console.log('Clicked menu for:', session.id);
-                                            // Toggle current, close if clicking same
-                                            setOpenMenuSessionId(openMenuSessionId === session.id ? null : session.id);
-                                        }}
-                                        className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                                    >
-                                        <MoreVertical className="w-5 h-5" />
-                                    </button>
-
-                                    {openMenuSessionId === session.id && (
-                                        <div
-                                            className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-xl border border-gray-100 block"
-                                            style={{ zIndex: 9999, position: 'absolute', opacity: 1, visibility: 'visible' }}
-                                        >
-                                            <button
-                                                disabled={isDeleting}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteSession(session.id);
-                                                }}
-                                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                                            >
-                                                {isDeleting ? (
-                                                    <span className="animate-spin h-3 w-3 border-2 border-red-600 rounded-full border-t-transparent"></span>
-                                                ) : (
-                                                    <Trash2 className="w-4 h-4" />
-                                                )}
-                                                Delete
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
                             </div>
                         ))
                     )}

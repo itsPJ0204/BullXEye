@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import TargetFace from '@/components/target/TargetFace';
 import { Button } from '@/components/ui/Button';
-import { ArrowLeft, ChevronDown, ChevronUp, MoreVertical, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 // Arrow Colors for visualization
@@ -45,14 +45,7 @@ export default function SessionDetails({ params }: { params: Promise<{ id: strin
     const { user, isLoading: authLoading } = useAuth();
     const [session, setSession] = useState<SessionData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [showMenu, setShowMenu] = useState(false);
 
-    // Close menu when clicking outside
-    useEffect(() => {
-        const handleClickOutside = () => setShowMenu(false);
-        document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
-    }, []);
 
     // Default visible arrows
     const [visibleArrows, setVisibleArrows] = useState<Set<number>>(new Set([1, 2, 3, 4, 5, 6]));
@@ -182,52 +175,35 @@ export default function SessionDetails({ params }: { params: Promise<{ id: strin
                         </div>
                     </div>
 
-                    {/* Delete Menu */}
+                    {/* Delete Session Button */}
                     <div className="relative">
                         <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0 rounded-full"
-                            onClick={(e) => {
+                            className="h-8 w-8 p-0 rounded-full text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                            onClick={async (e) => {
                                 e.stopPropagation();
-                                setShowMenu(!showMenu);
+                                if (!supabase) return;
+
+                                // Confirm delete
+                                if (!confirm('Are you sure you want to delete this session? This cannot be undone.')) return;
+
+                                setLoading(true);
+                                const { error } = await supabase.from('practice_sessions').delete().eq('id', session.id);
+
+                                if (error) {
+                                    console.error("Error deleting session:", error);
+                                    alert('Error deleting: ' + error.message);
+                                    setLoading(false);
+                                } else {
+                                    // Success - redirect to dashboard
+                                    router.replace('/dashboard');
+                                }
                             }}
+                            disabled={loading} // Disable if already deleting/loading
                         >
-                            <span className="sr-only">Open menu</span>
-                            <MoreVertical className="w-5 h-5 text-gray-400" />
+                            <Trash2 className="w-5 h-5" />
                         </Button>
-
-                        {showMenu && (
-                            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
-                                {/* Delete Option */}
-                                <button
-                                    className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors font-medium cursor-pointer"
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        setShowMenu(false);
-                                        if (!supabase) return;
-
-                                        // Confirm delete
-                                        if (!confirm('Are you sure you want to delete this session? This cannot be undone.')) return;
-
-                                        setLoading(true);
-                                        const { error } = await supabase.from('practice_sessions').delete().eq('id', session.id);
-
-                                        if (error) {
-                                            console.error("Error deleting session:", error);
-                                            alert('Error deleting: ' + error.message);
-                                            setLoading(false);
-                                        } else {
-                                            // Success - redirect to dashboard
-                                            router.replace('/dashboard');
-                                        }
-                                    }}
-                                >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete Session
-                                </button>
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
